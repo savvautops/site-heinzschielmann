@@ -1,0 +1,105 @@
+---
+// admin.astro — Simple content editor that saves to Convex and triggers a Cloudflare Pages rebuild
+import siteData from '../../data/site.json';
+const { igHandle, description, images, deployHook } = siteData;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Admin — {igHandle}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; }
+    .panel { max-width: 800px; margin: 0 auto; padding: 3rem 2rem; }
+    h1 { font-size: 2rem; font-weight: 900; margin-bottom: 0.5rem; }
+    .handle { color: #6366f1; }
+    .section { background: #1e293b; border-radius: 1rem; padding: 2rem; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #94a3b8; margin-bottom: 0.5rem; }
+    input, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 0.5rem; padding: 0.75rem 1rem; color: #e2e8f0; font-size: 1rem; font-family: inherit; outline: none; transition: border 0.2s; }
+    input:focus, textarea:focus { border-color: #6366f1; }
+    textarea { min-height: 120px; resize: vertical; }
+    .btn { display: inline-block; background: #6366f1; color: white; font-weight: 700; font-size: 0.875rem; padding: 0.875rem 2.5rem; border: none; border-radius: 9999px; cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; transition: transform 0.2s, opacity 0.2s; }
+    .btn:hover { opacity: 0.9; transform: scale(1.03); }
+    .btn:active { transform: scale(0.98); }
+    .status { margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 0.5rem; font-weight: 600; display: none; }
+    .status.ok { background: #064e3b; color: #6ee7b7; display: block; }
+    .status.err { background: #7f1d1d; color: #fca5a5; display: block; }
+    .warning { background: #431407; color: #fed7aa; border-radius: 0.5rem; padding: 0.75rem 1rem; font-size: 0.875rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Site Admin <span class="handle">@{igHandle}</span></h1>
+    <p style="color:#64748b; margin-bottom:2rem;">Edit your site content. Save triggers a rebuild in ~30 seconds.</p>
+
+    <div class="warning">⚠️ This page is public. Add Cloudflare Access protection or a password if handling client data.</div>
+
+    <div class="section">
+      <h2 style="font-weight:700; margin-bottom:1.5rem;">Site Content</h2>
+
+      <label for="heroTitle">Hero Title</label>
+      <input id="heroTitle" type="text" value={igHandle.replace(/_/g, ' ')} style="margin-bottom:1rem;" />
+
+      <label for="description">Description / Tagline</label>
+      <textarea id="description">{description}</textarea>
+
+      <label style="margin-top:1rem;" for="contactMsg">Contact Message</label>
+      <textarea id="contactMsg">Let's create something amazing together.</textarea>
+    </div>
+
+    <div class="section">
+      <h2 style="font-weight:700; margin-bottom:0.5rem;">Currently Active Images</h2>
+      <p style="color:#64748b; font-size:0.875rem; margin-bottom:1rem;">To change images, re-run the workflow with a new handle or updated description.</p>
+      <strong>Hero:</strong> <code style="color:#6366f1">{images?.hero || 'none'}</code><br/>
+      <strong>Gallery:</strong> <code style="color:#6366f1">{images?.gallery?.join(', ') || 'none'}</code>
+    </div>
+
+    <button class="btn" onclick="saveAndRebuild()">Save & Rebuild Site</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    const CONVEX_URL = import.meta.env.PUBLIC_CONVEX_URL || '';
+    const DEPLOY_HOOK = import.meta.env.PUBLIC_DEPLOY_HOOK || '';
+
+    async function saveAndRebuild() {
+      const status = document.getElementById('status');
+      status.className = 'status';
+      status.textContent = '';
+
+      const payload = {
+        heroTitle: document.getElementById('heroTitle').value,
+        description: document.getElementById('description').value,
+        contactMsg: document.getElementById('contactMsg').value,
+      };
+
+      try {
+        // Save content to Convex
+        if (CONVEX_URL) {
+          const r = await fetch(`${CONVEX_URL}/api/mutation`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: 'siteContent:saveAll', args: payload }),
+          });
+          if (!r.ok) throw new Error('Convex save failed: ' + await r.text());
+        }
+
+        // Trigger Cloudflare Pages rebuild
+        if (DEPLOY_HOOK) {
+          await fetch(DEPLOY_HOOK, { method: 'POST' });
+        }
+
+        status.textContent = '✅ Saved! Cloudflare is rebuilding your site (~30s). Refresh in a moment.';
+        status.className = 'status ok';
+      } catch (e) {
+        status.textContent = `❌ Error: ${e.message}`;
+        status.className = 'status err';
+      }
+    }
+  </script>
+</body>
+</html>
